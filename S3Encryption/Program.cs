@@ -38,14 +38,6 @@ namespace S3Encryption
                 (PutObjectVerbOptions opts) => RunPutAndReturnExitCode(opts),
                 _ => { return 0; });
 
-
-            //if (result.Item1 == 0)
-            //{
-            //    Console.WriteLine(JsonConvert.SerializeObject(result.Item2));
-            //}
-
-            //return result.Item1;
-
             return result;
         }
 
@@ -61,6 +53,8 @@ namespace S3Encryption
             });
 
             task.Wait();
+
+            File.WriteAllBytes(opts.Output, task.Result.Value);
 
             Console.WriteLine(JsonConvert.SerializeObject(task.Result));
             return 0;

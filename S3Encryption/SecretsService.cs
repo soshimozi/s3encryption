@@ -24,6 +24,8 @@ namespace S3Encryption
         private static readonly log4net.ILog logger =
             log4net.LogManager.GetLogger(typeof(SecretsService));
 
+        private const string IKEK_METADATA_KEY = "x-s3encryption-ikek";
+
         public async Task<Secret> GetSecretAsync(string secretName, string secretVersion)
         {
             if (await IsSecretRevoked(secretName))
@@ -40,9 +42,22 @@ namespace S3Encryption
                 getObjMetadataReq.VersionId = secretVersion;
             }
 
-            var metadataResponse = await s3Client.GetObjectMetadataAsync(getObjMetadataReq);
+            GetObjectMetadataResponse metadataResponse = null;
+
+            try
+            {
+                metadataResponse = await s3Client.GetObjectMetadataAsync(getObjMetadataReq);
+            }
+            catch(Amazon.S3.AmazonS3Exception ex)
+            {
+                if(ex.StatusCode == System.Net.HttpStatusCode.NotFound) 
+                    return null;
+
+                throw ex;
+            }
+
             var metadata = metadataResponse.Metadata;
-            var ikekVersionId = metadata["x-intu-ikek"];
+            var ikekVersionId = metadata[IKEK_METADATA_KEY];
             byte[] decryptedIKEK = await DownloadIkek(GetIkekObjectKey(secretName), ikekVersionId);
             var ikek = RSA.Create();
             ikek.ImportEncodedParameters(decryptedIKEK);
@@ -181,7 +196,7 @@ namespace S3Encryption
                 Key = objectKey,
                 InputStream = new MemoryStream(secretValue)
             };
-            putRequest.Metadata.Add("x-intu-ikek", ikekVersionId);
+            putRequest.Metadata.Add(IKEK_METADATA_KEY, ikekVersionId);
 
             var result = await s3Client.PutObjectAsync(putRequest);
 
@@ -272,6 +287,11 @@ namespace S3Encryption
             get; set;
         }
 
+        public String SecretKey
+        {
+            get; set;
+        }
+
         protected async Task<string> UploadIkek(string objectKeyName, byte[] ikek)
         {
             logger.Info($"encrypt I-KEK using {KmsCmkId}");
@@ -355,6 +375,44 @@ namespace S3Encryption
             }
             return _s3Client;
         }
+
+        /*
+
+         private static AWSCredentials GetAwsCredentials()
+            {
+                var credentialProfileStoreChain = new CredentialProfileStoreChain();
+                AWSCredentials defaultCredentials;
+                if (credentialProfileStoreChain.TryGetAWSCredentials("default", out defaultCredentials))
+                    return defaultCredentials;
+                else
+                    throw new AmazonClientException("Unable to find a default profile in CredentialProfileStoreChain.");
+            }
+
+            private static AWSCredentials ReadAwsCredentials(StartupParameters parameters)
+            {
+                if (CommandLineParamsHasAwsCreds(parameters))
+                {
+                    return new BasicAWSCredentials(parameters.AwsAccessKey, parameters.AwsSecretKey);
+                }
+
+                if (!string.IsNullOrWhiteSpace(parameters.AwsProfile))
+                {
+                    var credentialProfileStoreChain = new CredentialProfileStoreChain();
+                    AWSCredentials credentials;
+                    if (credentialProfileStoreChain.TryGetAWSCredentials(parameters.AwsProfile, out credentials))
+                        return credentials;
+                }
+
+                // use implicit credentials from config or profile
+                FallbackCredentialsFactory.CredentialsGenerators = new List<FallbackCredentialsFactory.CredentialsGenerator>
+                {
+                    () => new AppConfigAWSCredentials(),
+                    () => GetDefaultAWSCredentialsFromProfile(),
+                    () => new EnvironmentVariablesAWSCredentials()
+                };            
+
+         */
+
 
         private AWSCredentials GetAwsCredentials()
         {

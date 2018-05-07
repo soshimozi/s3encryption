@@ -11,7 +11,7 @@ namespace S3Encryption.CommandLineOptions
         [Option('o', "output", HelpText = "Output file", Required = true)]
         public string Output { get; set; }
 
-        [Option('s', "secret-name", HelpText = "Object key to download", Required = true)]
+        [Option('n', "secret-name", HelpText = "Object key to download", Required = true)]
         public string SecretName { get; set; }
 
         [Option('t', "secret-version", HelpText = "Version to download")]
@@ -20,6 +20,7 @@ namespace S3Encryption.CommandLineOptions
         public string S3BucketName { get; set; }
         public string Region { get; set; }
         public string KmsKeyId { get; set; }
-
+        public string AccountId { get; set; }
+        public string AccountSecret { get; set; }
     }
 }

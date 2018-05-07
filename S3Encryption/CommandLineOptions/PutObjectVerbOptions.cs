@@ -20,12 +20,14 @@ namespace S3Encryption.CommandLineOptions
         [Option('l', "password-length")]
         public int PasswordLength { get; set; }
 
-
         [Option('v', "secret-value")]
         public string SecretValue { get; set; }
 
         public string S3BucketName { get; set; }
         public string Region { get; set; }
         public string KmsKeyId { get; set; }
+        public string AccountId { get; set; }
+        public string AccountSecret { get; set; }
+
     }
 }

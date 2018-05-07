@@ -46,6 +46,8 @@ namespace S3Encryption
             _secretService.SetRegionByName(opts.Region);
             _secretService.KmsCmkId = opts.KmsKeyId;
             _secretService.BucketName = opts.S3BucketName;
+            _secretService.AccountId = opts.AccountId;
+            _secretService.AccountSecret = opts.AccountSecret;
 
             var task = Task.Run(() =>
             {
@@ -65,6 +67,8 @@ namespace S3Encryption
             _secretService.SetRegionByName(opts.Region);
             _secretService.KmsCmkId = opts.KmsKeyId;
             _secretService.BucketName = opts.S3BucketName;
+            _secretService.AccountId = opts.AccountId;
+            _secretService.AccountSecret = opts.AccountSecret;
 
             if (string.IsNullOrEmpty(opts.SecretValue) && !opts.GeneratePassword && !opts.GenerateSymetricKey)
             {

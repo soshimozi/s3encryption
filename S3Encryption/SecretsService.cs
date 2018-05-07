@@ -14,6 +14,7 @@ using System.Security.Cryptography;
 using S3Encryption.Utils;
 using Amazon.KeyManagementService;
 using Amazon.S3;
+using Amazon.Runtime.CredentialManagement;
 
 namespace S3Encryption
 {
@@ -287,7 +288,7 @@ namespace S3Encryption
             get; set;
         }
 
-        public String SecretKey
+        public String AccountSecret
         {
             get; set;
         }
@@ -376,56 +377,47 @@ namespace S3Encryption
             return _s3Client;
         }
 
-        /*
-
-         private static AWSCredentials GetAwsCredentials()
+        private AWSCredentials GetDefaultCredentials()
+        {
+            var credentialProfileStoreChain = new CredentialProfileStoreChain();
+            if (credentialProfileStoreChain.TryGetAWSCredentials("default", out AWSCredentials defaultCredentials))
             {
-                var credentialProfileStoreChain = new CredentialProfileStoreChain();
-                AWSCredentials defaultCredentials;
-                if (credentialProfileStoreChain.TryGetAWSCredentials("default", out defaultCredentials))
-                    return defaultCredentials;
-                else
-                    throw new AmazonClientException("Unable to find a default profile in CredentialProfileStoreChain.");
+                return defaultCredentials;
             }
 
-            private static AWSCredentials ReadAwsCredentials(StartupParameters parameters)
-            {
-                if (CommandLineParamsHasAwsCreds(parameters))
-                {
-                    return new BasicAWSCredentials(parameters.AwsAccessKey, parameters.AwsSecretKey);
-                }
+            throw new AmazonClientException("Unable to find a default profile in CredentialProfileStoreChain.");
+        }
 
-                if (!string.IsNullOrWhiteSpace(parameters.AwsProfile))
-                {
-                    var credentialProfileStoreChain = new CredentialProfileStoreChain();
-                    AWSCredentials credentials;
-                    if (credentialProfileStoreChain.TryGetAWSCredentials(parameters.AwsProfile, out credentials))
-                        return credentials;
-                }
-
-                // use implicit credentials from config or profile
-                FallbackCredentialsFactory.CredentialsGenerators = new List<FallbackCredentialsFactory.CredentialsGenerator>
-                {
-                    () => new AppConfigAWSCredentials(),
-                    () => GetDefaultAWSCredentialsFromProfile(),
-                    () => new EnvironmentVariablesAWSCredentials()
-                };            
-
-         */
-
+        private static AWSCredentials _savedCredentials;
 
         private AWSCredentials GetAwsCredentials()
         {
+            if (_savedCredentials != null)
+            {
+                return _savedCredentials;
+            }
+
+            if (!string.IsNullOrEmpty(AccountId))
+            {
+                return new BasicAWSCredentials(AccountId, AccountSecret);
+            }
+
+            if (!string.IsNullOrEmpty(Profile))
+            {
+                var credentialProfileStoreChain = new CredentialProfileStoreChain();
+                if (credentialProfileStoreChain.TryGetAWSCredentials(Profile, out AWSCredentials credentials))
+                {
+                    return credentials;
+                }
+            }
+
             FallbackCredentialsFactory.CredentialsGenerators = new List<FallbackCredentialsFactory.CredentialsGenerator>
             {
-                () => new StoredProfileAWSCredentials(Profile),
+                () => GetDefaultCredentials(),
                 () => new EnvironmentVariablesAWSCredentials()
-
             };
 
-            var creds = FallbackCredentialsFactory.GetCredentials();
-
-            return creds;
+            return _savedCredentials = FallbackCredentialsFactory.GetCredentials();
         }
 
         private AmazonS3EncryptionClient GetS3EncryptionClient(EncryptionMaterials materials, AmazonS3CryptoConfiguration cryptoConfig)

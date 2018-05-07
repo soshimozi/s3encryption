@@ -16,5 +16,11 @@ namespace S3Encryption.CommandLineOptions
         [Option('r', "region", HelpText = "Region name", Required = true)]
         string Region { get; set; }
 
+        [Option('i', "account-id", HelpText = "Account Id", Required = false)]
+        string AccountId { get; set; }
+
+        [Option('s', "account-secret", HelpText = "Account Secret", Required = false)]
+        string AccountSecret { get; set; }
+
     }
 }

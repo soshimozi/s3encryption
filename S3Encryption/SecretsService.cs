@@ -414,9 +414,11 @@ namespace S3Encryption
 
         protected AmazonS3Client GetS3Client()
         {
-            if (null == _s3Client) {
+            if (null == _s3Client)
+            {
                 _s3Client = new AmazonS3Client(GetAwsCredentials(), new AmazonS3Config { RegionEndpoint = AwsRegion } );
             }
+
             return _s3Client;
         }
 

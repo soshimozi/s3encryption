@@ -34,9 +34,47 @@ namespace S3Encryption
                 throw new SecretsSdkException($"Can't get revoked secret, {secretName}");
             }
 
-            var objectKey = GetObjectKey(secretName);
-            logger.Info($"get I-KEK from secret metadata {secretName}");
             var s3Client = GetS3Client();
+
+            var objectKey = GetObjectKey(secretName);
+
+            var metadataInfo = await GetMetadata(secretVersion, objectKey, s3Client);
+            var ikekVersionId = metadataInfo.Item2[IKEK_METADATA_KEY];
+
+            logger.Info($"get I-KEK from secret metadata {secretName}");
+            RSA ikek = await GetIkek(secretName, ikekVersionId);
+
+            var s3EncryptedClient = GetS3EncryptionClient(new EncryptionMaterials(ikek), new AmazonS3CryptoConfiguration { RegionEndpoint = AwsRegion });
+            return await GetSecretObject(secretName, secretVersion, metadataInfo.Item1, objectKey, metadataInfo.Item2, s3EncryptedClient);
+        }
+
+        private async Task<Secret> GetSecretObject(string secretName, string secretVersion, string metadaatVersion, string objectKey, MetadataCollection metadata, AmazonS3EncryptionClient s3EncryptedClient)
+        {
+
+            var secret = new Secret()
+            {
+                Name = secretName,
+                Version = metadaatVersion,
+                UserMetadata = GetUserMetadata(metadata)
+            };
+
+
+            var getObjectRequest = new GetObjectRequest { BucketName = BucketName, Key = objectKey };
+            if (!string.IsNullOrEmpty(secretVersion))
+            {
+                getObjectRequest.VersionId = secretVersion;
+            }
+            var downloadedSecret = await s3EncryptedClient.GetObjectAsync(getObjectRequest);
+
+            secret.Value = await GetByteArray(downloadedSecret);
+            secret.LastModified = downloadedSecret.LastModified;
+            logger.Info($"downloaded secret {secretName}");
+
+            return secret;
+        }
+
+        private async Task<Tuple<string, MetadataCollection>> GetMetadata(string secretVersion, string objectKey, AmazonS3Client s3Client)
+        {
             var getObjMetadataReq = new GetObjectMetadataRequest { BucketName = BucketName, Key = objectKey };
             if (!string.IsNullOrEmpty(secretVersion))
             {
@@ -49,41 +87,23 @@ namespace S3Encryption
             {
                 metadataResponse = await s3Client.GetObjectMetadataAsync(getObjMetadataReq);
             }
-            catch(Amazon.S3.AmazonS3Exception ex)
+            catch (AmazonS3Exception ex)
             {
-                if(ex.StatusCode == System.Net.HttpStatusCode.NotFound) 
+                if (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
                     return null;
 
                 throw ex;
             }
 
-            var metadata = metadataResponse.Metadata;
-            var ikekVersionId = metadata[IKEK_METADATA_KEY];
+            return new Tuple<string, MetadataCollection>(metadataResponse.VersionId, metadataResponse.Metadata);
+        }
+
+        private async Task<RSA> GetIkek(string secretName, string ikekVersionId)
+        {
             byte[] decryptedIKEK = await DownloadIkek(GetIkekObjectKey(secretName), ikekVersionId);
             var ikek = RSA.Create();
             ikek.ImportEncodedParameters(decryptedIKEK);
-            var s3EncryptedClient = GetS3EncryptionClient(new EncryptionMaterials(ikek), new AmazonS3CryptoConfiguration { RegionEndpoint = AwsRegion });
-
-            var aSecret = new Secret()
-            {
-                Name = secretName,
-                Version = metadataResponse.VersionId,
-                UserMetadata = GetUserMetadata(metadata)
-            };
-
-
-            var getObjectRequest = new GetObjectRequest { BucketName = BucketName, Key = objectKey };
-            if (!string.IsNullOrEmpty(secretVersion))
-            {
-                getObjectRequest.VersionId = secretVersion;
-            }
-            var downloadedSecret = await s3EncryptedClient.GetObjectAsync(getObjectRequest);
-
-            aSecret.Value = await GetByteArray(downloadedSecret);
-            aSecret.LastModified = downloadedSecret.LastModified;
-            logger.Info($"downloaded secret {secretName}");
-
-            return aSecret;
+            return ikek;
         }
 
         public async Task<List<Secret>> ListSecrets(string filter, bool includeAllVersions)
@@ -262,12 +282,6 @@ namespace S3Encryption
         }
 
 
-        public RegionEndpoint AwsRegion
-        {
-            get;
-            private set;
-        }
-
         public void SetRegionByName(string regionName)
         {
             RegionEndpoint region;
@@ -280,6 +294,13 @@ namespace S3Encryption
                 throw new SecretsSdkException($"{regionName} is not a valid AWS region");
             }
             AwsRegion = region;
+        }
+
+
+        public RegionEndpoint AwsRegion
+        {
+            get;
+            private set;
         }
 
         public String RegionName
@@ -414,11 +435,11 @@ namespace S3Encryption
 
         private AWSCredentials GetAwsCredentials()
         {
-            if (_savedCredentials != null)
-            {
-                return _savedCredentials;
-            }
+            return _savedCredentials ?? (_savedCredentials = BuildCredentials());
+        }
 
+        private AWSCredentials BuildCredentials()
+        {
             if (!string.IsNullOrEmpty(AccountId))
             {
                 return new BasicAWSCredentials(AccountId, AccountSecret);
@@ -439,7 +460,7 @@ namespace S3Encryption
                 () => new EnvironmentVariablesAWSCredentials()
             };
 
-            return _savedCredentials = FallbackCredentialsFactory.GetCredentials();
+            return FallbackCredentialsFactory.GetCredentials();
         }
 
         private AmazonS3EncryptionClient GetS3EncryptionClient(EncryptionMaterials materials, AmazonS3CryptoConfiguration cryptoConfig)

@@ -89,86 +89,108 @@ namespace S3Encryption
         public async Task<List<Secret>> ListSecrets(string filter, bool includeAllVersions)
         {
             logger.Info($"list secrets filter={filter}, allVersion={includeAllVersions}");
-            var secrets = new List<Secret>();
 
             var s3Client = GetS3Client();
 
+            var listRequest = new ListObjectsRequest { BucketName = BucketName };
+            if (!string.IsNullOrEmpty(filter))
+            {
+                listRequest.Prefix = filter;
+            }
+
             if (includeAllVersions)
             {
-                var listRequest = new ListVersionsRequest { BucketName = BucketName };
-                if (!string.IsNullOrEmpty(filter))
-                {
-                    listRequest.Prefix = filter;
-                }
-
-                var revokedSecrets = new List<string>();
-                string currentObjectKey = null;
-                ListVersionsResponse listResponse;
-                do
-                {
-                    logger.Info($"list secrets form marker {listRequest.KeyMarker}");
-                    listResponse = await s3Client.ListVersionsAsync(listRequest);
-
-                    foreach (var summary in listResponse.Versions)
-                    {
-                        var objectKey = summary.Key;
-                        if (objectKey.EndsWith(".isec"))
-                        {
-                            continue;
-                        }
-
-                        if (currentObjectKey?.CompareTo(objectKey) != 0)
-                        {
-                            currentObjectKey = objectKey;
-                            if (summary.IsDeleteMarker)
-                            {
-                                revokedSecrets.Add(objectKey);
-                                continue;
-                            }
-                        }
-
-                        var secret = new Secret(objectKey.Substring(0, objectKey.LastIndexOf(".isec")))
-                        {
-                            Version = summary.VersionId,
-                            LastModified = summary.LastModified
-                        };
-                        secrets.Add(secret);
-                    }
-
-                    listRequest.KeyMarker = listResponse.NextKeyMarker;
-                } while (listResponse.IsTruncated);
+                return await GetSecretVersions(filter, s3Client);
             }
             else
             {
-                var listRequest = new ListObjectsRequest { BucketName = BucketName };
-                if (!string.IsNullOrEmpty(filter))
+                return await GetSecrets(filter, s3Client);
+            }
+        }
+
+        private async Task<List<Secret>> GetSecrets(string filter, AmazonS3Client s3Client)
+        {
+            var secrets = new List<Secret>();
+
+            var listRequest = new ListObjectsRequest { BucketName = BucketName };
+            if (!string.IsNullOrEmpty(filter))
+            {
+                listRequest.Prefix = filter;
+            }
+
+            ListObjectsResponse response;
+
+            do
+            {
+                logger.Info($"list secrets from marker {listRequest.Marker}");
+                response = await s3Client.ListObjectsAsync(listRequest);
+
+                foreach (var summary in response.S3Objects)
                 {
-                    listRequest.Prefix = filter;
-                }
-
-                ListObjectsResponse response;
-
-                do
-                {
-                    logger.Info($"list secrets from marker {listRequest.Marker}");
-                    response = await s3Client.ListObjectsAsync(listRequest);
-
-                    foreach (var summary in response.S3Objects)
+                    var objectKey = summary.Key;
+                    if (!objectKey.EndsWith(".isec"))
                     {
-                        var objectKey = summary.Key;
-                        if (!objectKey.EndsWith(".isec"))
-                        {
-                            continue;
-                        }
-
-                        var secret = new Secret(objectKey.Substring(0, objectKey.LastIndexOf(".isec")));
-                        secret.LastModified = summary.LastModified;
-                        secrets.Add(secret);
+                        continue;
                     }
 
-                    listRequest.Marker = response.NextMarker;
-                } while (response.IsTruncated);
+                    var secret = new Secret(objectKey.Substring(0, objectKey.LastIndexOf(".isec")));
+                    secret.LastModified = summary.LastModified;
+                    secrets.Add(secret);
+                }
+
+                listRequest.Marker = response.NextMarker;
+            } while (response.IsTruncated);
+
+            return secrets;
+        }
+
+        private async Task<List<Secret>> GetSecretVersions(string filter, AmazonS3Client s3Client)
+        {
+            var secrets = new List<Secret>();
+
+            var listRequest = new ListVersionsRequest { BucketName = BucketName };
+            if (!string.IsNullOrEmpty(filter))
+            {
+                listRequest.Prefix = filter;
             }
+
+            var revokedSecrets = new List<string>();
+            string currentObjectKey = null;
+            ListVersionsResponse listResponse;
+            do
+            {
+                logger.Info($"list secrets form marker {listRequest.KeyMarker}");
+                listResponse = await s3Client.ListVersionsAsync(listRequest);
+
+                foreach (var summary in listResponse.Versions)
+                {
+                    var objectKey = summary.Key;
+                    if (objectKey.EndsWith(".isec"))
+                    {
+                        continue;
+                    }
+
+                    if (currentObjectKey?.CompareTo(objectKey) != 0)
+                    {
+                        currentObjectKey = objectKey;
+                        if (summary.IsDeleteMarker)
+                        {
+                            revokedSecrets.Add(objectKey);
+                            continue;
+                        }
+                    }
+
+                    var secret = new Secret(objectKey.Substring(0, objectKey.LastIndexOf(".isec")))
+                    {
+                        Version = summary.VersionId,
+                        LastModified = summary.LastModified
+                    };
+
+                    secrets.Add(secret);
+                }
+
+                listRequest.KeyMarker = listResponse.NextKeyMarker;
+            } while (listResponse.IsTruncated);
 
             return secrets;
         }
@@ -452,7 +474,7 @@ namespace S3Encryption
             {
                 if (!key.StartsWith("x-amz-", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (key.StartsWith("x-intu-ikek", StringComparison.OrdinalIgnoreCase))
+                    if (key.StartsWith(IKEK_METADATA_KEY, StringComparison.OrdinalIgnoreCase))
                     {
                         continue;
                     }

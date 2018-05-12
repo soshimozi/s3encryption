@@ -252,7 +252,7 @@ namespace S3Encryption
 
         public async Task<string> RecoverRevokedSecret(string p0)
         {
-            throw new NotImplementedException();
+            throw await new AwaitableNotImplementedException<string>();
         }
 
         public async Task<Secret> RevokeSecret(string secretName)
@@ -289,7 +289,7 @@ namespace S3Encryption
             {
                 region = RegionEndpoint.GetBySystemName(regionName);
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 throw new SecretsSdkException($"{regionName} is not a valid AWS region");
             }

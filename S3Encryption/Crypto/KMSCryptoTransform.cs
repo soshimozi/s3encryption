@@ -1,16 +1,13 @@
 ﻿using Amazon.KeyManagementService;
-using Amazon.KeyManagementService.Model;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace S3Encryption.Crypto
 {
-    public abstract class KMSCryptoTransform : ICryptoTransform
+    public abstract partial class KMSCryptoTransform : ICryptoTransform
     {
         protected IAmazonKeyManagementService _client;
         protected string _keyId;
@@ -56,53 +53,6 @@ namespace S3Encryption.Crypto
         public void Dispose()
         {
 
-        }
-
-        public class Decryptor : KMSCryptoTransform
-        {
-            public Decryptor(IAmazonKeyManagementService client)
-                : base(client) { }
-
-            public override byte[] TransformFinalBlock(byte[] inputBuffer, int inputOffset, int inputCount)
-            {
-                //var response = Task.Factory.StartNew(() => _client.DecryptAsync(new DecryptRequest()
-                //{
-                //    CiphertextBlob = new MemoryStream(inputBuffer, inputOffset, inputCount)
-                //}));
-
-
-                var task = Task.Run<DecryptResponse>(() => {
-                    return _client.DecryptAsync(new DecryptRequest()
-                    {
-                        CiphertextBlob = new MemoryStream(inputBuffer, inputOffset, inputCount)
-                    });
-                });
-
-
-                task.Wait();
-                return task.Result.Plaintext.ToArray();
-            }
-        }
-
-        public class Encryptor : KMSCryptoTransform
-        {
-            public Encryptor(IAmazonKeyManagementService client, string keyId)
-                : base(client, keyId) { }
-
-            public override byte[] TransformFinalBlock(byte[] inputBuffer, int inputOffset, int inputCount)
-            {
-                var task = Task.Run<EncryptResponse>(() => {
-                    return _client.EncryptAsync(new EncryptRequest()
-                    {
-                        KeyId = _keyId,
-                        Plaintext = new MemoryStream(inputBuffer, inputOffset, inputCount)
-                    });
-                });
-
-
-                task.Wait();
-                return task.Result.CiphertextBlob.ToArray();
-            }
         }
 
     }

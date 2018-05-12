@@ -1,6 +1,5 @@
 ﻿using S3Encryption.CommandLineOptions;
 using CommandLine;
-using CommandLine.Text;
 using System;
 using S3Encryption.Models;
 using System.Collections.Generic;

@@ -3,6 +3,8 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp1.1</TargetFramework>
+	<RuntimeIdentifiers>Win7-x64</RuntimeIdentifiers>
+	<StartupObject>S3Encryption.Program</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>
